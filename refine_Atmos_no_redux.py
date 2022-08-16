@@ -50,7 +50,6 @@ def run():
             print(f"{pkgname}/{scriptname}: Creating new dataset")
 
         out = xr.Dataset()
-        #out.attrs = ds.attrs.copy()  # copy global attributes
 
     # --- surface albedo
     albedo_input_vars = set([args.shortwave_down, args.shortwave_up])
@@ -77,44 +76,25 @@ def run():
             if plev is not None:
                 if var != plev.name:
                     varout = var.replace("_unmsk", "")
-                    out[varout] = mask_surface_pressure(ds, var, plev,
-                                                     ps=surface_pressure_shortname)
+                    out[varout] = mask_surface_pressure(
+                        ds, var, plev, ps=surface_pressure_shortname
+                    )
                     out[plev.name].attrs = ds[plev.name].attrs.copy()
 
-#    # --- add proper grid attrs
-#    for var in grid_vars:
-#        if var in list(ds.variables):
-#            out[var] = ds[var]
-#            out[var].attrs = ds[var].attrs.copy()
-#
-#    # --- add extra time variables
-#    for var in extra_time_variables:
-#        if var in list(ds.variables):
-#            out[var] = ds[var]
-#            out[var].attrs = ds[var].attrs.copy()
-
-
     # --- write dataset to file
-    n_vars_output = len(list(out.variables))
-    if n_vars_output > 0:
-        #out.load()
-        #encoding = set_netcdf_encoding(out)
-        if verbose:
-            print(
-                f"{pkgname}/{scriptname}: writting variables {list(out.variables)} into refined file {args.outfile} "
-            )
+    new_vars_output = len(list(out.variables)) > 0
 
+    if verbose and new_vars_output:
+        print(
+            f"{pkgname}/{scriptname}: writting variables {list(out.variables)} into refined file {args.outfile} "
+        )
+    elif verbose and not new_vars_output:
+        print(
+            f"{pkgname}/{scriptname}: no variables created, not writting refined file"
+        )
+
+    if new_vars_output:
         write_dataset(out, ds, args)
-        #out.to_netcdf(args.outfile, format=args.format, encoding=encoding, unlimited_dims="time")
-        #post_write(args.outfile, out)
-
-
-    else:
-        if verbose:
-            print(
-                f"{pkgname}/{scriptname}: no variables created, not writting refined file"
-            )
-
 
 
 def compute_albedo(ds, swdown="rsds", swup="rsus"):
@@ -136,7 +116,7 @@ def compute_albedo(ds, swdown="rsds", swup="rsus"):
 
 
 def mask_surface_pressure(ds, var, pressure_dim, ps="ps"):
-    """ mask data with pressure larger than surface pressure """
+    """mask data with pressure larger than surface pressure"""
 
     plev_extended, _ = xr.broadcast(pressure_dim, ds[var])
     ps_extended, _ = xr.broadcast(ds[surface_pressure_shortname], ds[var])
@@ -146,22 +126,21 @@ def mask_surface_pressure(ds, var, pressure_dim, ps="ps"):
 
     return masked
 
+
 def pressure_coordinate(ds, varname, verbose=False):
-    """ check if dataArray has pressure coordinate fitting requirements"""
+    """check if dataArray has pressure coordinate fitting requirements
+    and return it"""
 
-
-    if verbose:
-        print(f"working on {varname}")
-
-    pressure_coord=None
+    pressure_coord = None
 
     for dim in list(ds[varname].dims):
-        if dim in list(ds.variables):
+        if dim in list(ds.variables):  # dim needs to have values in file
             if ds[dim].attrs["long_name"] == "pressure":
                 pressure_coord = ds[dim]
             elif ("coordinates" in ds.attrs) and (ds[dim].attrs["units"] == "Pa"):
                 pressure_coord = ds[dim]
 
+    # some variables need not to be masked
     if varname in unaccepted_variables_for_masking:
         pressure_coord = None
 
@@ -170,11 +149,12 @@ def pressure_coordinate(ds, varname, verbose=False):
             print(f"{varname} has pressure coords {pressure_coord.name}")
         else:
             print(f"{varname} has no pressure coords")
+
     return pressure_coord
 
 
 def write_dataset(ds, template, args):
-    """ prepare the dataset and dump into netcdf file """
+    """prepare the dataset and dump into netcdf file"""
 
     ds.attrs = template.attrs.copy()  # copy global attributes
 
@@ -191,10 +171,13 @@ def write_dataset(ds, template, args):
             ds[var].attrs = template[var].attrs.copy()
 
     encoding = set_netcdf_encoding(ds)
-    ds.to_netcdf(args.outfile, format=args.format, encoding=encoding, unlimited_dims="time")
+    ds.to_netcdf(
+        args.outfile, format=args.format, encoding=encoding, unlimited_dims="time"
+    )
     post_write(args.outfile, ds)
 
     return None
+
 
 def set_netcdf_encoding(ds):
     """set preferred options for netcdf encoding"""
@@ -210,8 +193,8 @@ def set_netcdf_encoding(ds):
 
 
 def post_write(filename, ds):
-    """ fix a posteriori attributes that xarray.to_netcdf
-    did not do properly using low level netcdf lib """
+    """fix a posteriori attributes that xarray.to_netcdf
+    did not do properly using low level netcdf lib"""
 
     f = nc.Dataset(filename, "a")
     f.variables["time_bnds"].setncattr("units", ds["time_bnds"].attrs["units"])
