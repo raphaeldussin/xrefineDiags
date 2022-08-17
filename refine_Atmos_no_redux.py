@@ -8,6 +8,7 @@
 
 import argparse
 import os
+import re
 import netCDF4 as nc
 import xarray as xr
 
@@ -18,12 +19,13 @@ do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time"]
 grid_vars = ["grid_xt", "grid_yt"]
 unaccepted_variables_for_masking = ["cll", "clm", "clh"]
 albedo_shortname = "albs"
-surface_pressure_shortname = "ps"
+surf_pres_short = "ps"
 albedo_metadata = dict(
     long_name="Surface Albedo", units="1.0", standard_name="surface_albedo"
 )
 pkgname = "xrefineDiags"
 scriptname = "refine_Atmos_no_redux.py"
+pro = f"{pkgname}/{scriptname}"
 
 
 def run():
@@ -35,66 +37,53 @@ def run():
 
     # --- open file
     if verbose:
-        print(f"{pkgname}/{scriptname}: Opening input file {args.infile}")
+        print(f"{pro}: Opening input file {args.infile}")
 
     ds = xr.open_dataset(args.infile, decode_cf=False)
 
     # --- create output dataset
     if os.path.exists(args.outfile):
         if verbose:
-            print(f"{pkgname}/{scriptname}: Opening existing file {args.outfile}")
+            print(f"{pro}: Opening existing file {args.outfile}")
 
-        out = xr.open_dataset(args.outfile, decode_cf=False)
+        refined = xr.open_dataset(args.outfile, decode_cf=False)
     else:
         if verbose:
-            print(f"{pkgname}/{scriptname}: Creating new dataset")
+            print(f"{pro}: Creating new dataset")
 
-        out = xr.Dataset()
+        refined = xr.Dataset()
 
     # --- surface albedo
     albedo_input_vars = set([args.shortwave_down, args.shortwave_up])
 
     if albedo_input_vars.issubset(set(ds.variables)):
         if verbose:
-            print(f"{pkgname}/{scriptname}: compute surface albedo")
+            print(f"{pro}: compute surface albedo")
 
-        out[albedo_shortname] = compute_albedo(
+        refined[albedo_shortname] = compute_albedo(
             ds, swdown=args.shortwave_down, swup=args.shortwave_up
         )
     else:
         if verbose:
-            print(
-                f"{pkgname}/{scriptname}: surface albedo NOT computed, missing input variables"
-            )
+            print(f"{pro}: surface albedo NOT computed, missing input variables")
 
     # --- mask variables with surface pressure
-    if surface_pressure_shortname in list(ds.variables):
-        vars_to_process = list(ds.variables)
-        vars_to_process.remove(surface_pressure_shortname)
-        for var in vars_to_process:
-            plev = pressure_coordinate(ds, var, verbose=verbose)
-            if plev is not None:
-                if var != plev.name:
-                    varout = var.replace("_unmsk", "")
-                    out[varout] = mask_surface_pressure(
-                        ds, var, plev, ps=surface_pressure_shortname
-                    )
-                    out[plev.name].attrs = ds[plev.name].attrs.copy()
+    refined = mask_above_surface_pressure(
+        ds, refined, surf_pres_short=surf_pres_short, verbose=verbose
+    )
 
     # --- write dataset to file
-    new_vars_output = len(list(out.variables)) > 0
+    new_vars_output = len(list(refined.variables)) > 0
 
     if verbose and new_vars_output:
         print(
-            f"{pkgname}/{scriptname}: writting variables {list(out.variables)} into refined file {args.outfile} "
+            f"{pro}: writting variables {list(refined.variables)} into refined file {args.outfile} "
         )
     elif verbose and not new_vars_output:
-        print(
-            f"{pkgname}/{scriptname}: no variables created, not writting refined file"
-        )
+        print(f"{pro}: no variables created, not writting refined file")
 
     if new_vars_output:
-        write_dataset(out, ds, args)
+        write_dataset(refined, ds, args)
 
 
 def compute_albedo(ds, swdown="rsds", swup="rsus"):
@@ -115,12 +104,44 @@ def compute_albedo(ds, swdown="rsds", swup="rsus"):
     return albedo
 
 
-def mask_surface_pressure(ds, var, pressure_dim, ps="ps"):
+def mask_above_surface_pressure(ds, refined, surf_pres_short="ps", verbose=False):
+    """find fields with pressure coordinate and mask
+    values of fields where p > surface pressure
+
+    Args:
+        ds (_type_): _description_
+        out (_type_): _description_
+        verbose (bool, optional): _description_. Defaults to False.
+    """
+    # surface pressure needs to be in the dataset
+    if surf_pres_short in list(ds.variables):
+        vars_to_process = list(ds.variables)
+        # do not process surface pressure
+        vars_to_process.remove(surf_pres_short)
+        for var in vars_to_process:
+            # find the pressure coordinate in dataset
+            plev = pressure_coordinate(ds, var, verbose=verbose)
+            # proceed if there is a coordinate pressure
+            # but do not process the coordinate itself
+            if (plev is not None) and (var != plev.name):
+                varout = var.replace("_unmsk", "")
+                refined[varout] = mask_field_above_surface_pressure(
+                    ds, var, plev, surf_press_short=surf_pres_short
+                )
+                refined[plev.name].attrs = ds[plev.name].attrs.copy()
+    return refined
+
+
+def mask_field_above_surface_pressure(ds, var, pressure_dim, surf_press_short="ps"):
     """mask data with pressure larger than surface pressure"""
 
+    # broadcast pressure coordinate and surface pressure to
+    # the dimensions of the variable to mask
     plev_extended, _ = xr.broadcast(pressure_dim, ds[var])
-    ps_extended, _ = xr.broadcast(ds[surface_pressure_shortname], ds[var])
+    ps_extended, _ = xr.broadcast(ds[surf_press_short], ds[var])
+    # masking do not need looping
     masked = xr.where(plev_extended > ps_extended, CMOR_MISSING_VALUE, ds[var])
+    # copy attributes and transpose dims like the original array
     masked.attrs = ds[var].attrs.copy()
     masked = masked.transpose(*ds[var].dims)
 
@@ -146,9 +167,9 @@ def pressure_coordinate(ds, varname, verbose=False):
 
     if verbose:
         if pressure_coord is not None:
-            print(f"{varname} has pressure coords {pressure_coord.name}")
+            print(f"{pro}: {varname} has pressure coords {pressure_coord.name}")
         else:
-            print(f"{varname} has no pressure coords")
+            print(f"{pro}: {varname} has no pressure coords")
 
     return pressure_coord
 
