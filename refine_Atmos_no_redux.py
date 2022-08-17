@@ -87,6 +87,8 @@ def run():
     if new_vars_output:
         write_dataset(refined, ds, args)
 
+    return None
+
 
 def compute_albedo(ds, swdown="rsds", swup="rsus"):
     """compute surface albedo from upwelling and downwelling shortwave radiation rsus/rsds"""
