@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# This script contains the refineDiags that reduce data in time 
+# This script contains the refineDiags that reduce data in time
 # from daily to monthly values (e.g. min/ax over the period)
 # It can accept any file and will only compute refineDiags in fields
 # are present.
@@ -15,12 +15,6 @@ CMOR_MISSING_VALUE = 1.0e20
 extra_time_variables = ["time_bnds", "average_T1", "average_T2", "average_DT"]
 do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time"]
 grid_vars = ["grid_xt", "grid_yt", "ap", "b", "ap_bnds", "b_bnds", "lev", "lev_bnds"]
-unaccepted_variables_for_masking = ["cll", "clm", "clh"]
-albedo_shortname = "albs"
-surf_pres_short = "ps"
-albedo_metadata = dict(
-    long_name="Surface Albedo", units="1.0", standard_name="surface_albedo"
-)
 pkgname = "xrefineDiags"
 scriptname = "refine_Atmos_redux_daily_to_monthly.py"
 pro = f"{pkgname}/{scriptname}"
@@ -51,7 +45,11 @@ def run():
             print(f"{pro}: Creating new dataset")
 
         refined = xr.Dataset()
-    
+
+    # -- create time variables if they don't exist in refined dataset
+    if "time" not in list(refined.variables):
+        refined = populate_time_vars(refined, ds)
+        print(refined)
 
     # -- compute min/max from daily to monthly
     if "t_ref_max" in list(ds.variables):
@@ -59,8 +57,17 @@ def run():
     if "t_ref_min" in list(ds.variables):
         refined["t_ref_min"] = min_over_month(ds["t_ref_min"], ds, refined)
 
+    if "u_ref_max" in list(ds.variables):
+        refined["u_ref_max"] = max_over_month(ds["u_ref_max"], ds, refined)
+    if "u_ref_min" in list(ds.variables):
+        refined["u_ref_min"] = min_over_month(ds["u_ref_min"], ds, refined)
 
-   # --- write dataset to file
+    if "rh_ref_max" in list(ds.variables):
+        refined["rh_ref_max"] = max_over_month(ds["rh_ref_max"], ds, refined)
+    if "rh_ref_min" in list(ds.variables):
+        refined["rh_ref_min"] = min_over_month(ds["rh_ref_min"], ds, refined)
+
+    # --- write dataset to file
     new_vars_output = len(list(refined.variables)) > 0
 
     if verbose and new_vars_output:
@@ -82,7 +89,9 @@ def max_over_month(da, ds, refined):
     da_max = da.groupby(realtime.dt.month).mean(dim="time").rename({"month": "time"})
     da_max["time"] = refined["time"]
     da_max.attrs = da.attrs.copy()
-    da_max.attrs["cell_methods"] = da_max.attrs["cell_methods"].replace("max", "max within days time: mean over days")
+    da_max.attrs["cell_methods"] = da_max.attrs["cell_methods"].replace(
+        "max", "max within days time: mean over days"
+    )
 
     return da_max
 
@@ -93,15 +102,72 @@ def min_over_month(da, ds, refined):
     da_min = da.groupby(realtime.dt.month).mean(dim="time").rename({"month": "time"})
     da_min["time"] = refined["time"]
     da_min.attrs = da.attrs.copy()
-    da_min.attrs["cell_methods"] = da_min.attrs["cell_methods"].replace("min", "min within days time: mean over days")
+    da_min.attrs["cell_methods"] = da_min.attrs["cell_methods"].replace(
+        "min", "min within days time: mean over days"
+    )
 
     return da_min
+
+
+def populate_time_vars(refined, ds):
+
+    realtime = xr.decode_cf(ds)["time"]
+
+    time_monthly = (
+        ds["time"].groupby(realtime.dt.month).mean(dim="time").rename({"month": "time"})
+    )
+    refined["time"] = xr.DataArray(
+        data=time_monthly, dims=("time"), attrs=ds["time"].attrs
+    )
+
+    average_DT = (
+        ds["average_DT"]
+        .groupby(realtime.dt.month)
+        .sum(dim="time")
+        .rename({"month": "time"})
+    )
+    refined["average_DT"] = xr.DataArray(data=average_DT.values, dims=("time"))
+    refined["average_DT"].attrs = ds["average_DT"].attrs.copy()
+
+    average_T1 = (
+        ds["average_T1"]
+        .groupby(realtime.dt.month)
+        .min(dim="time")
+        .rename({"month": "time"})
+    )
+    refined["average_T1"] = xr.DataArray(data=average_T1.values, dims=("time"))
+    refined["average_T1"].attrs = ds["average_T1"].attrs.copy()
+
+    average_T2 = (
+        ds["average_T2"]
+        .groupby(realtime.dt.month)
+        .max(dim="time")
+        .rename({"month": "time"})
+    )
+    refined["average_T2"] = xr.DataArray(data=average_T2.values, dims=("time"))
+    refined["average_T2"].attrs = ds["average_T2"].attrs.copy()
+
+    time_bnds = xr.concat([average_T1, average_T2], dim="nv").transpose()
+    refined["time_bnds"] = xr.DataArray(data=time_bnds.values, dims=("time", "nv"))
+    refined["time_bnds"].attrs = ds["time_bnds"].attrs.copy()
+
+    # needs to be repeated to conserve attributes
+    refined["time"] = xr.DataArray(
+        data=time_monthly, dims=("time"), attrs=ds["time"].attrs
+    )
+
+    refined["nv"] = xr.DataArray(
+        [1.0, 2.0], dims="nv", attrs={"long_name": "vertex number"}
+    )
+
+    return refined
 
 
 def write_dataset(ds, template, args):
     """prepare the dataset and dump into netcdf file"""
 
-    #ds.attrs = template.attrs.copy()  # copy global attributes
+    if len(ds.attrs) == 0:
+        ds.attrs = template.attrs.copy()  # copy global attributes
     ds.attrs["filename"] = args.outfile
 
     # --- add proper grid attrs
@@ -109,12 +175,6 @@ def write_dataset(ds, template, args):
         if var in list(template.variables):
             ds[var] = template[var]
             ds[var].attrs = template[var].attrs.copy()
-
-    # --- add extra time variables
-    #for var in extra_time_variables:
-    #    if var in list(template.variables):
-    #        ds[var] = template[var]
-    #        ds[var].attrs = template[var].attrs.copy()
 
     # --- remove bounds in attributes since it messed the bnds var
     var_with_bounds = []

@@ -46,6 +46,7 @@ def run():
             print(f"{pro}: Opening existing file {args.outfile}")
 
         refined = xr.open_dataset(args.outfile, decode_cf=False)
+        refined.load()
     else:
         if verbose:
             print(f"{pro}: Creating new dataset")
@@ -322,7 +323,8 @@ def refine_tracers(ds, refined, verbose=False):
 def write_dataset(ds, template, args):
     """prepare the dataset and dump into netcdf file"""
 
-    ds.attrs = template.attrs.copy()  # copy global attributes
+    if len(ds.attrs) == 0:
+        ds.attrs = template.attrs.copy()  # copy global attributes
     ds.attrs["filename"] = args.outfile
 
     # --- add proper grid attrs
