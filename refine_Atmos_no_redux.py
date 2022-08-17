@@ -8,7 +8,6 @@
 
 import argparse
 import os
-import re
 import netCDF4 as nc
 import xarray as xr
 
@@ -16,7 +15,7 @@ import xarray as xr
 CMOR_MISSING_VALUE = 1.0e20
 extra_time_variables = ["time_bnds", "average_T1", "average_T2", "average_DT"]
 do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time"]
-grid_vars = ["grid_xt", "grid_yt"]
+grid_vars = ["grid_xt", "grid_yt", "ap", "b", "ap_bnds", "b_bnds", "lev", "lev_bnds"]
 unaccepted_variables_for_masking = ["cll", "clm", "clh"]
 albedo_shortname = "albs"
 surf_pres_short = "ps"
@@ -71,6 +70,9 @@ def run():
     refined = mask_above_surface_pressure(
         ds, refined, surf_pres_short=surf_pres_short, verbose=verbose
     )
+
+    # --- compute additional tracers from those present in dataset
+    refined = refine_tracers(ds, refined, verbose=False)
 
     # --- write dataset to file
     new_vars_output = len(list(refined.variables)) > 0
@@ -174,10 +176,152 @@ def pressure_coordinate(ds, varname, verbose=False):
     return pressure_coord
 
 
+def refine_tracers(ds, refined, verbose=False):
+    """compute additional tracers"""
+
+    all_vars = set(ds.variables)
+
+    if set(["emipoa", "chepsoa"]).issubset(all_vars):
+        refined["emioa"] = ds["emipoa"] + ds["chepsoa"]
+        refined["emioa"].attrs = ds["emipoa"].attrs.copy()
+        refined["emioa"].attrs.update(
+            {
+                "long_name": "Rate of Emission and Production of Dry Aerosol Total Organic Matter",
+                "units": "kg m-2 s-1",
+                "comment": "emipoa+chepsoa",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_due_to_net_chemical_production_and_emission",
+            }
+        )
+
+    if set(["emiapoa", "chepasoa"]).issubset(all_vars):
+        refined["emiaoa"] = ds["emiapoa"] + ds["chepasoa"]
+        refined["emiaoa"].attrs = ds["emiapoa"].attrs.copy()
+        refined["emiaoa"].attrs.update(
+            {
+                "long_name": "total emission of anthropogenic organic aerosol",
+                "units": "kg m-2 s-1",
+                "comment": "emiapoa+chepasoa",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production_and_emission",
+            }
+        )
+
+    if set(["drypoa", "drysoa"]).issubset(all_vars):
+        refined["dryoa"] = ds["drypoa"] + ds["drysoa"]
+        refined["dryoa"].attrs = ds["drypoa"].attrs.copy()
+        refined["dryoa"].attrs.update(
+            {
+                "long_name": "Dry Deposition Rate of Dry Aerosol Total Organic Matter",
+                "units": "kg m-2 s-1",
+                "comment": "drypoa+drysoa",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_due_to_dry_deposition",
+            }
+        )
+
+    if set(["wetpoa", "wetsoa"]).issubset(all_vars):
+        refined["wetoa"] = ds["wetpoa"] + ds["wetsoa"]
+        refined["wetoa"].attrs = ds["wetpoa"].attrs.copy()
+        refined["wetoa"].attrs.update(
+            {
+                "long_name": "Wet Deposition Rate of Dry Aerosol Total Organic Matter",
+                "units": "kg m-2 s-1",
+                "comment": "wetpoa+wetsoa",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_due_to_wet_deposition",
+            }
+        )
+
+    if set(["pso4_aq_kg_m2_s", "pso4_aq_so2_reevap_ls"]).issubset(all_vars):
+        refined["cheaqpso4"] = ds["pso4_aq_kg_m2_s"] + ds["pso4_aq_so2_reevap_ls"]
+        refined["cheaqpso4"].attrs = ds["pso4_aq_kg_m2_s"].attrs.copy()
+        refined["cheaqpso4"].attrs.update(
+            {
+                "long_name": "Aqueous-phase Production Rate of Sulfate Aerosol",
+                "units": "kg m-2 s-1",
+                "comment": "pso4_aq_kg_m2_s+pso4_aq_so2_reevap_ls",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production",
+            }
+        )
+
+    if set(["eminox_woL", "eminox_lght"]).issubset(all_vars):
+        refined["eminox"] = ds["eminox_woL"] + ds["eminox_lght"]
+        refined["eminox"].attrs = ds["eminox_woL"].attrs.copy()
+        refined["eminox"].attrs.update(
+            {
+                "long_name": "Total Emission Rate of NOx",
+                "units": "kg m-2 s-1",
+                "comment": "eminox_woL+eminox_lght",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission",
+            }
+        )
+
+    if set(["emiisop_woB", "emiisop_biogenic"]).issubset(all_vars):
+        refined["emiisop"] = ds["emiisop_woB"] + ds["emiisop_biogenic"]
+        refined["emiisop"].attrs = ds["emiisop_woB"].attrs.copy()
+        refined["emiisop"].attrs.update(
+            {
+                "long_name": "Total Emission Rate of Isoprene",
+                "units": "kg m-2 s-1",
+                "comment": "emiisop_woB+emiisop_biogenic",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission",
+            }
+        )
+
+    if set(["eminh3_woOCN", "nh3_mol_flux_atm0"]).issubset(all_vars):
+        refined["eminh3"] = ds["eminh3_woOCN"] + 0.017 * ds["nh3_mol_flux_atm0"]
+        refined["eminh3"].attrs = ds["eminh3_woOCN"].attrs.copy()
+        refined["eminh3"].attrs.update(
+            {
+                "long_name": "Total Emission Rate of NH3",
+                "units": "kg m-2 s-1",
+                "comment": "eminh3_woOCN+0.017*nh3_mol_flux_atm0",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_ammonia_due_to_emission",
+            }
+        )
+
+    if set(["drynh3_woOCN", "nh3_mol_flux_atm0", "nh3_mol_flux"]).issubset(all_vars):
+        refined["drynh3"] = (
+            ds["drynh3_woOCN"]
+            + 0.017 * ds["nh3_mol_flux_atm0"]
+            - 0.017 * ds["nh3_mol_flux"]
+        )
+        refined["drynh3"].attrs = ds["drynh3_woOCN"].attrs.copy()
+        refined["drynh3"].attrs.update(
+            {
+                "long_name": "Dry Deposition Rate of NH3",
+                "units": "kg m-2 s-1",
+                "comment": "drynh3_woOCN+0.017*nh3_mol_flux_atm0-0.017*nh3_mol_flux",
+                "standard_name": "minus_tendency_of_atmosphere_mass_content_of_ammonia_due_to_dry_deposition",
+            }
+        )
+
+    if set(
+        ["dust1_flux", "dust2_flux", "dust3_flux", "dust4_flux", "dust5_flux"]
+    ).issubset(all_vars):
+        refined["emidust"] = (
+            ds["dust1_flux"]
+            + ds["dust2_flux"]
+            + ds["dust3_flux"]
+            + ds["dust4_flux"]
+            + ds["dust5_flux"]
+        )
+        refined["emidust"] = refined["emidust"].clip(vmin=0.0)
+        refined["emidust"].attrs = ds["dust1_flux"].attrs.copy()
+        refined["emidust"].attrs.update(
+            {
+                "long_name": "Total Emission Rate of Dust",
+                "units": "kg m-2 s-1",
+                "comment": "dust1_flux+dust2_flux+dust3_flux+dust4_flux+dust5_flux",
+                "standard_name": "tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_particles_due_to_emission",
+            }
+        )
+
+    return refined
+
+
 def write_dataset(ds, template, args):
     """prepare the dataset and dump into netcdf file"""
 
     ds.attrs = template.attrs.copy()  # copy global attributes
+    ds.attrs["filename"] = args.outfile
 
     # --- add proper grid attrs
     for var in grid_vars:
@@ -191,11 +335,20 @@ def write_dataset(ds, template, args):
             ds[var] = template[var]
             ds[var].attrs = template[var].attrs.copy()
 
+    # --- remove bounds in attributes since it messed the bnds var
+    var_with_bounds = []
+    bounds_variables = []
+    for var in list(ds.variables):
+        if "bounds" in ds[var].attrs:
+            var_with_bounds.append(var)
+            bounds_variables.append(ds[var].attrs.pop("bounds"))
+
     encoding = set_netcdf_encoding(ds)
+
     ds.to_netcdf(
         args.outfile, format=args.format, encoding=encoding, unlimited_dims="time"
     )
-    post_write(args.outfile, ds)
+    post_write(args.outfile, ds, var_with_bounds, bounds_variables)
 
     return None
 
@@ -213,12 +366,15 @@ def set_netcdf_encoding(ds):
     return encoding
 
 
-def post_write(filename, ds):
+def post_write(filename, ds, var_with_bounds, bounds_variables):
     """fix a posteriori attributes that xarray.to_netcdf
     did not do properly using low level netcdf lib"""
 
     f = nc.Dataset(filename, "a")
-    f.variables["time_bnds"].setncattr("units", ds["time_bnds"].attrs["units"])
+
+    for var, bndvar in zip(var_with_bounds, bounds_variables):
+        f.variables[var].setncattr("bounds", bndvar)
+
     f.close()
 
     return None
