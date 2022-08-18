@@ -46,29 +46,38 @@ def run():
 
         refined = xr.Dataset()
 
+    # we haven't created any new variables yet
+    new_vars_output=False
+
     # -- create time variables if they don't exist in refined dataset
     if "time" not in list(refined.variables):
         refined = populate_time_vars(refined, ds)
-        print(refined)
+        # creating time variables do not qualify as new output
 
     # -- compute min/max from daily to monthly
     if "t_ref_max" in list(ds.variables):
+        new_vars_output=True
         refined["t_ref_max"] = max_over_month(ds["t_ref_max"], ds, refined)
     if "t_ref_min" in list(ds.variables):
+        new_vars_output=True
         refined["t_ref_min"] = min_over_month(ds["t_ref_min"], ds, refined)
 
     if "u_ref_max" in list(ds.variables):
+        new_vars_output=True
         refined["u_ref_max"] = max_over_month(ds["u_ref_max"], ds, refined)
     if "u_ref_min" in list(ds.variables):
+        new_vars_output=True
         refined["u_ref_min"] = min_over_month(ds["u_ref_min"], ds, refined)
 
     if "rh_ref_max" in list(ds.variables):
+        new_vars_output=True
         refined["rh_ref_max"] = max_over_month(ds["rh_ref_max"], ds, refined)
     if "rh_ref_min" in list(ds.variables):
+        new_vars_output=True
         refined["rh_ref_min"] = min_over_month(ds["rh_ref_min"], ds, refined)
 
     # --- write dataset to file
-    new_vars_output = len(list(refined.variables)) > 0
+    #new_vars_output = len(list(refined.variables)) > 0
 
     if verbose and new_vars_output:
         print(

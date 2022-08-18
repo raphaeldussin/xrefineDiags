@@ -53,6 +53,9 @@ def run():
 
         refined = xr.Dataset()
 
+    # we haven't created any new variable yet
+    new_vars_output=False
+
     # --- surface albedo
     albedo_input_vars = set([args.shortwave_down, args.shortwave_up])
 
@@ -60,6 +63,7 @@ def run():
         if verbose:
             print(f"{pro}: compute surface albedo")
 
+        new_vars_output=True
         refined[albedo_shortname] = compute_albedo(
             ds, swdown=args.shortwave_down, swup=args.shortwave_up
         )
@@ -68,15 +72,15 @@ def run():
             print(f"{pro}: surface albedo NOT computed, missing input variables")
 
     # --- mask variables with surface pressure
-    refined = mask_above_surface_pressure(
-        ds, refined, surf_pres_short=surf_pres_short, verbose=verbose
+    refined, new_vars_output = mask_above_surface_pressure(
+        ds, refined, new_vars_output, surf_pres_short=surf_pres_short, verbose=verbose
     )
 
     # --- compute additional tracers from those present in dataset
-    refined = refine_tracers(ds, refined, verbose=False)
+    refined, new_vars_output = refine_tracers(ds, refined, new_vars_output, verbose=False)
 
     # --- write dataset to file
-    new_vars_output = len(list(refined.variables)) > 0
+    #new_vars_output = len(list(refined.variables)) > 0
 
     if verbose and new_vars_output:
         print(
@@ -109,7 +113,7 @@ def compute_albedo(ds, swdown="rsds", swup="rsus"):
     return albedo
 
 
-def mask_above_surface_pressure(ds, refined, surf_pres_short="ps", verbose=False):
+def mask_above_surface_pressure(ds, refined, new_vars_output, surf_pres_short="ps", verbose=False):
     """find fields with pressure coordinate and mask
     values of fields where p > surface pressure
 
@@ -130,11 +134,12 @@ def mask_above_surface_pressure(ds, refined, surf_pres_short="ps", verbose=False
             # but do not process the coordinate itself
             if (plev is not None) and (var != plev.name):
                 varout = var.replace("_unmsk", "")
+                new_vars_output = True
                 refined[varout] = mask_field_above_surface_pressure(
                     ds, var, plev, surf_press_short=surf_pres_short
                 )
                 refined[plev.name].attrs = ds[plev.name].attrs.copy()
-    return refined
+    return refined, new_vars_output
 
 
 def mask_field_above_surface_pressure(ds, var, pressure_dim, surf_press_short="ps"):
@@ -179,12 +184,13 @@ def pressure_coordinate(ds, varname, verbose=False):
     return pressure_coord
 
 
-def refine_tracers(ds, refined, verbose=False):
+def refine_tracers(ds, refined, new_vars_output, verbose=False):
     """compute additional tracers"""
 
     all_vars = set(ds.variables)
 
     if set(["emipoa", "chepsoa"]).issubset(all_vars):
+        new_vars_output=True
         refined["emioa"] = ds["emipoa"] + ds["chepsoa"]
         refined["emioa"].attrs = ds["emipoa"].attrs.copy()
         refined["emioa"].attrs.update(
@@ -197,6 +203,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["emiapoa", "chepasoa"]).issubset(all_vars):
+        new_vars_output=True
         refined["emiaoa"] = ds["emiapoa"] + ds["chepasoa"]
         refined["emiaoa"].attrs = ds["emiapoa"].attrs.copy()
         refined["emiaoa"].attrs.update(
@@ -209,6 +216,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["drypoa", "drysoa"]).issubset(all_vars):
+        new_vars_output=True
         refined["dryoa"] = ds["drypoa"] + ds["drysoa"]
         refined["dryoa"].attrs = ds["drypoa"].attrs.copy()
         refined["dryoa"].attrs.update(
@@ -221,6 +229,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["wetpoa", "wetsoa"]).issubset(all_vars):
+        new_vars_output=True
         refined["wetoa"] = ds["wetpoa"] + ds["wetsoa"]
         refined["wetoa"].attrs = ds["wetpoa"].attrs.copy()
         refined["wetoa"].attrs.update(
@@ -233,6 +242,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["pso4_aq_kg_m2_s", "pso4_aq_so2_reevap_ls"]).issubset(all_vars):
+        new_vars_output=True
         refined["cheaqpso4"] = ds["pso4_aq_kg_m2_s"] + ds["pso4_aq_so2_reevap_ls"]
         refined["cheaqpso4"].attrs = ds["pso4_aq_kg_m2_s"].attrs.copy()
         refined["cheaqpso4"].attrs.update(
@@ -245,6 +255,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["eminox_woL", "eminox_lght"]).issubset(all_vars):
+        new_vars_output=True
         refined["eminox"] = ds["eminox_woL"] + ds["eminox_lght"]
         refined["eminox"].attrs = ds["eminox_woL"].attrs.copy()
         refined["eminox"].attrs.update(
@@ -257,6 +268,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["emiisop_woB", "emiisop_biogenic"]).issubset(all_vars):
+        new_vars_output=True
         refined["emiisop"] = ds["emiisop_woB"] + ds["emiisop_biogenic"]
         refined["emiisop"].attrs = ds["emiisop_woB"].attrs.copy()
         refined["emiisop"].attrs.update(
@@ -269,6 +281,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["eminh3_woOCN", "nh3_mol_flux_atm0"]).issubset(all_vars):
+        new_vars_output=True
         refined["eminh3"] = ds["eminh3_woOCN"] + 0.017 * ds["nh3_mol_flux_atm0"]
         refined["eminh3"].attrs = ds["eminh3_woOCN"].attrs.copy()
         refined["eminh3"].attrs.update(
@@ -281,6 +294,7 @@ def refine_tracers(ds, refined, verbose=False):
         )
 
     if set(["drynh3_woOCN", "nh3_mol_flux_atm0", "nh3_mol_flux"]).issubset(all_vars):
+        new_vars_output=True
         refined["drynh3"] = (
             ds["drynh3_woOCN"]
             + 0.017 * ds["nh3_mol_flux_atm0"]
@@ -299,6 +313,7 @@ def refine_tracers(ds, refined, verbose=False):
     if set(
         ["dust1_flux", "dust2_flux", "dust3_flux", "dust4_flux", "dust5_flux"]
     ).issubset(all_vars):
+        new_vars_output=True
         refined["emidust"] = (
             ds["dust1_flux"]
             + ds["dust2_flux"]
@@ -317,7 +332,7 @@ def refine_tracers(ds, refined, verbose=False):
             }
         )
 
-    return refined
+    return refined, new_vars_output
 
 
 def write_dataset(ds, template, args):
