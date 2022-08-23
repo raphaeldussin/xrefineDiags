@@ -14,7 +14,7 @@ import xarray as xr
 
 CMOR_MISSING_VALUE = 1.0e20
 extra_time_variables = ["time_bnds", "average_T1", "average_T2", "average_DT"]
-do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time"]
+do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time", "lev"]
 grid_vars = ["grid_xt", "grid_yt", "ap", "b", "ap_bnds", "b_bnds", "lev", "lev_bnds"]
 unaccepted_variables_for_masking = ["cll", "clm", "clh"]
 albedo_shortname = "albs"
@@ -54,7 +54,7 @@ def run():
         refined = xr.Dataset()
 
     # we haven't created any new variable yet
-    new_vars_output=False
+    new_vars_output = False
 
     # --- surface albedo
     albedo_input_vars = set([args.shortwave_down, args.shortwave_up])
@@ -63,7 +63,7 @@ def run():
         if verbose:
             print(f"{pro}: compute surface albedo")
 
-        new_vars_output=True
+        new_vars_output = True
         refined[albedo_shortname] = compute_albedo(
             ds, swdown=args.shortwave_down, swup=args.shortwave_up
         )
@@ -72,16 +72,16 @@ def run():
             print(f"{pro}: surface albedo NOT computed, missing input variables")
 
     # --- mask variables with surface pressure
-    refined, new_vars_output = mask_above_surface_pressure(
+    refined, new_vars_output, pressure_vars = mask_above_surface_pressure(
         ds, refined, new_vars_output, surf_pres_short=surf_pres_short, verbose=verbose
     )
 
     # --- compute additional tracers from those present in dataset
-    refined, new_vars_output = refine_tracers(ds, refined, new_vars_output, verbose=False)
+    refined, new_vars_output = refine_tracers(
+        ds, refined, new_vars_output, verbose=False
+    )
 
     # --- write dataset to file
-    #new_vars_output = len(list(refined.variables)) > 0
-
     if verbose and new_vars_output:
         print(
             f"{pro}: writting variables {list(refined.variables)} into refined file {args.outfile} "
@@ -90,7 +90,7 @@ def run():
         print(f"{pro}: no variables created, not writting refined file")
 
     if new_vars_output:
-        write_dataset(refined, ds, args)
+        write_dataset(refined, ds, pressure_vars, args)
 
     return None
 
@@ -113,7 +113,9 @@ def compute_albedo(ds, swdown="rsds", swup="rsus"):
     return albedo
 
 
-def mask_above_surface_pressure(ds, refined, new_vars_output, surf_pres_short="ps", verbose=False):
+def mask_above_surface_pressure(
+    ds, refined, new_vars_output, surf_pres_short="ps", verbose=False
+):
     """find fields with pressure coordinate and mask
     values of fields where p > surface pressure
 
@@ -122,6 +124,9 @@ def mask_above_surface_pressure(ds, refined, new_vars_output, surf_pres_short="p
         out (_type_): _description_
         verbose (bool, optional): _description_. Defaults to False.
     """
+
+    pressure_vars = []
+
     # surface pressure needs to be in the dataset
     if surf_pres_short in list(ds.variables):
         vars_to_process = list(ds.variables)
@@ -133,13 +138,17 @@ def mask_above_surface_pressure(ds, refined, new_vars_output, surf_pres_short="p
             # proceed if there is a coordinate pressure
             # but do not process the coordinate itself
             if (plev is not None) and (var != plev.name):
+                pressure_vars.append(plev.name)
                 varout = var.replace("_unmsk", "")
                 new_vars_output = True
                 refined[varout] = mask_field_above_surface_pressure(
                     ds, var, plev, surf_press_short=surf_pres_short
                 )
                 refined[plev.name].attrs = ds[plev.name].attrs.copy()
-    return refined, new_vars_output
+
+    pressure_vars = list(set(pressure_vars))
+
+    return refined, new_vars_output, pressure_vars
 
 
 def mask_field_above_surface_pressure(ds, var, pressure_dim, surf_press_short="ps"):
@@ -190,7 +199,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     all_vars = set(ds.variables)
 
     if set(["emipoa", "chepsoa"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["emioa"] = ds["emipoa"] + ds["chepsoa"]
         refined["emioa"].attrs = ds["emipoa"].attrs.copy()
         refined["emioa"].attrs.update(
@@ -203,7 +212,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["emiapoa", "chepasoa"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["emiaoa"] = ds["emiapoa"] + ds["chepasoa"]
         refined["emiaoa"].attrs = ds["emiapoa"].attrs.copy()
         refined["emiaoa"].attrs.update(
@@ -216,7 +225,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["drypoa", "drysoa"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["dryoa"] = ds["drypoa"] + ds["drysoa"]
         refined["dryoa"].attrs = ds["drypoa"].attrs.copy()
         refined["dryoa"].attrs.update(
@@ -229,7 +238,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["wetpoa", "wetsoa"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["wetoa"] = ds["wetpoa"] + ds["wetsoa"]
         refined["wetoa"].attrs = ds["wetpoa"].attrs.copy()
         refined["wetoa"].attrs.update(
@@ -242,7 +251,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["pso4_aq_kg_m2_s", "pso4_aq_so2_reevap_ls"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["cheaqpso4"] = ds["pso4_aq_kg_m2_s"] + ds["pso4_aq_so2_reevap_ls"]
         refined["cheaqpso4"].attrs = ds["pso4_aq_kg_m2_s"].attrs.copy()
         refined["cheaqpso4"].attrs.update(
@@ -255,7 +264,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["eminox_woL", "eminox_lght"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["eminox"] = ds["eminox_woL"] + ds["eminox_lght"]
         refined["eminox"].attrs = ds["eminox_woL"].attrs.copy()
         refined["eminox"].attrs.update(
@@ -268,7 +277,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["emiisop_woB", "emiisop_biogenic"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["emiisop"] = ds["emiisop_woB"] + ds["emiisop_biogenic"]
         refined["emiisop"].attrs = ds["emiisop_woB"].attrs.copy()
         refined["emiisop"].attrs.update(
@@ -281,7 +290,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["eminh3_woOCN", "nh3_mol_flux_atm0"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["eminh3"] = ds["eminh3_woOCN"] + 0.017 * ds["nh3_mol_flux_atm0"]
         refined["eminh3"].attrs = ds["eminh3_woOCN"].attrs.copy()
         refined["eminh3"].attrs.update(
@@ -294,7 +303,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
         )
 
     if set(["drynh3_woOCN", "nh3_mol_flux_atm0", "nh3_mol_flux"]).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["drynh3"] = (
             ds["drynh3_woOCN"]
             + 0.017 * ds["nh3_mol_flux_atm0"]
@@ -313,7 +322,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(
         ["dust1_flux", "dust2_flux", "dust3_flux", "dust4_flux", "dust5_flux"]
     ).issubset(all_vars):
-        new_vars_output=True
+        new_vars_output = True
         refined["emidust"] = (
             ds["dust1_flux"]
             + ds["dust2_flux"]
@@ -335,7 +344,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     return refined, new_vars_output
 
 
-def write_dataset(ds, template, args):
+def write_dataset(ds, template, pressure_vars, args):
     """prepare the dataset and dump into netcdf file"""
 
     if len(ds.attrs) == 0:
@@ -362,7 +371,7 @@ def write_dataset(ds, template, args):
             var_with_bounds.append(var)
             bounds_variables.append(ds[var].attrs.pop("bounds"))
 
-    encoding = set_netcdf_encoding(ds)
+    encoding = set_netcdf_encoding(ds, pressure_vars)
 
     ds.to_netcdf(
         args.outfile, format=args.format, encoding=encoding, unlimited_dims="time"
@@ -372,13 +381,13 @@ def write_dataset(ds, template, args):
     return None
 
 
-def set_netcdf_encoding(ds):
+def set_netcdf_encoding(ds, pressure_vars):
     """set preferred options for netcdf encoding"""
 
     all_vars = list(ds.variables)
     encoding = {}
 
-    for var in do_not_encode_vars:
+    for var in do_not_encode_vars + pressure_vars:
         if var in all_vars:
             encoding.update({var: dict(_FillValue=None)})
 

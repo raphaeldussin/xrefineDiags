@@ -13,7 +13,7 @@ import xarray as xr
 
 CMOR_MISSING_VALUE = 1.0e20
 extra_time_variables = ["time_bnds", "average_T1", "average_T2", "average_DT"]
-do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time"]
+do_not_encode_vars = ["nv", "grid_xt", "grid_yt", "time", "lev"]
 grid_vars = ["grid_xt", "grid_yt", "ap", "b", "ap_bnds", "b_bnds", "lev", "lev_bnds"]
 pkgname = "xrefineDiags"
 scriptname = "refine_Atmos_redux_daily_to_monthly.py"
@@ -47,7 +47,7 @@ def run():
         refined = xr.Dataset()
 
     # we haven't created any new variables yet
-    new_vars_output=False
+    new_vars_output = False
 
     # -- create time variables if they don't exist in refined dataset
     if "time" not in list(refined.variables):
@@ -56,29 +56,27 @@ def run():
 
     # -- compute min/max from daily to monthly
     if "t_ref_max" in list(ds.variables):
-        new_vars_output=True
+        new_vars_output = True
         refined["t_ref_max"] = max_over_month(ds["t_ref_max"], ds, refined)
     if "t_ref_min" in list(ds.variables):
-        new_vars_output=True
+        new_vars_output = True
         refined["t_ref_min"] = min_over_month(ds["t_ref_min"], ds, refined)
 
     if "u_ref_max" in list(ds.variables):
-        new_vars_output=True
+        new_vars_output = True
         refined["u_ref_max"] = max_over_month(ds["u_ref_max"], ds, refined)
     if "u_ref_min" in list(ds.variables):
-        new_vars_output=True
+        new_vars_output = True
         refined["u_ref_min"] = min_over_month(ds["u_ref_min"], ds, refined)
 
     if "rh_ref_max" in list(ds.variables):
-        new_vars_output=True
+        new_vars_output = True
         refined["rh_ref_max"] = max_over_month(ds["rh_ref_max"], ds, refined)
     if "rh_ref_min" in list(ds.variables):
-        new_vars_output=True
+        new_vars_output = True
         refined["rh_ref_min"] = min_over_month(ds["rh_ref_min"], ds, refined)
 
     # --- write dataset to file
-    #new_vars_output = len(list(refined.variables)) > 0
-
     if verbose and new_vars_output:
         print(
             f"{pro}: writting variables {list(refined.variables)} into refined file {args.outfile} "
