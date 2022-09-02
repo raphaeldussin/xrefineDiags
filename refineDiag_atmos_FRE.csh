@@ -32,6 +32,8 @@ if ($?refineDiagDir) then
 
 # run script to create refined fields
 
+   module load python
+
    $CODE_DIRECTORY/refineDiag_atmos.csh `pwd` $refineDiagDir
    # or in python
    #$CODE_DIRECTORY/refineDiag_atmos.py -w `pwd` -r $refineDiagDir -s $CODE_DIRECTORY --only_cmip
