@@ -19,7 +19,7 @@ end
 
 foreach INFILE (`/bin/ls *.atmos_daily*cmip*.nc`)
   # replace cmip in output filename by refined
-  set OUTFILE = `echo $INFILE | sed -e 's/_cmip/_refined/'`
+  set OUTFILE = `echo $INFILE | sed -e 's/_cmip/_refined/' -e 's/daily/month/'`
   $source_dir/refine_Atmos_redux_daily_to_monthly.py $INFILE -o $refineDiagDir/$OUTFILE -v
   if ($?) @ refineAtmosErrors++
 end

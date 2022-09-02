@@ -17,14 +17,13 @@
 #                            # input directory = `cwd`
 ###################################################################
 
-set refineDiagScriptDir = `dirname $0`
+#set refineDiagScriptDir = `dirname $0`
 
 set CODE_DIRECTORY = ./refine_scripts
+git clone https://github.com/raphaeldussin/xrefineDiags.git $CODE_DIRECTORY
 
-mkdir $CODE_DIRECTORY
-cp -r $refineDiagScriptDir/* $CODE_DIRECTORY/.
-chmod +x $CODE_DIRECTORY/*.csh
-chmod +x $CODE_DIRECTORY/*.py
+ln -s $CODE_DIRECTORY/*.csh .
+ln -s $CODE_DIRECTORY/*.py .
 
 # check that output directory is defined
 
@@ -34,9 +33,9 @@ if ($?refineDiagDir) then
 
    module load python
 
-   $CODE_DIRECTORY/refineDiag_atmos.csh `pwd` $refineDiagDir
+   ./refineDiag_atmos.csh `pwd` $refineDiagDir
    # or in python
-   #$CODE_DIRECTORY/refineDiag_atmos.py -w `pwd` -r $refineDiagDir -s $CODE_DIRECTORY --only_cmip
+   #./refineDiag_atmos.py -w `pwd` -r $refineDiagDir -s . --only_cmip
    set return_status = $?
 
 else

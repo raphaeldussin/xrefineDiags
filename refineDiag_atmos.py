@@ -38,6 +38,17 @@ def fileout_name(filein):
     return fileout
 
 
+def fileout_name_redux_daily_to_month(filein):
+    """build the output filename for refined"""
+
+    parts = filein.split(".")
+    # typically 2nd string has the name
+    parts[1] = parts[1].replace("daily", "month").replace("_cmip", "") + "_refined"
+    sep = "."
+    fileout = sep.join(parts)
+    return fileout
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -103,7 +114,7 @@ if __name__ == "__main__":
     files_to_process_redux_daily_to_monthly.sort()
 
     for f in files_to_process_redux_daily_to_monthly:
-        fout = fileout_name(f)
+        fout = fileout_name_redux_daily_to_month(f)
         out = subprocess.check_call(
             [
                 f"{args.source_dir}/refine_Atmos_redux_daily_to_monthly.py",
