@@ -11,6 +11,7 @@ import os
 import netCDF4 as nc
 import xarray as xr
 
+xr.set_options(keep_attrs=True)
 
 CMOR_MISSING_VALUE = 1.0e20
 extra_time_variables = ["time_bnds", "average_T1", "average_T2", "average_DT"]
@@ -38,7 +39,7 @@ def run():
     if verbose:
         print(f"{pro}: Opening input file {args.infile}")
 
-    ds = xr.open_dataset(args.infile, decode_cf=False)
+    ds = xr.open_dataset(args.infile, use_cftime=True)
 
     # --- create output dataset
     if os.path.exists(args.outfile):
