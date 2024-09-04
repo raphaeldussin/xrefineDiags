@@ -99,7 +99,8 @@ def run():
 def compute_albedo(ds, swdown="rsds", swup="rsus"):
     """compute surface albedo from upwelling and downwelling shortwave radiation rsus/rsds"""
 
-    albedo = xr.where(ds[swdown] > 0.0, ds[swup] / ds[swdown], CMOR_MISSING_VALUE)
+    albedo = xr.where(ds[swdown] > 0.0, ds[swup] / ds[swdown],
+                      CMOR_MISSING_VALUE, keep_attrs=True)
 
     # copy attributes from input field
     albedo.attrs = ds[swdown].attrs.copy()
@@ -142,17 +143,40 @@ def mask_above_surface_pressure(
                 pressure_vars.append(plev.name)
                 varout = var.replace("_unmsk", "")
                 new_vars_output = True
-                refined[varout] = mask_field_above_surface_pressure(
+                refined[varout] = mask_3dfield_above_surface_pressure(
                     ds, var, plev, surf_press_short=surf_pres_short
                 )
                 refined[plev.name].attrs = ds[plev.name].attrs.copy()
+            else:
+                # variable does not have a pressure level
+                # but has _unmsk suffix and has coordinates containing
+                # the value of the pressure level
+                plev_value = find_pressure_level(ds[var])
+                if ("_unmsk" in var) and plev_value is not None:
+                    varout = var.replace("_unmsk", "")
+                    new_vars_output = True
+                    refined[varout] = mask_2dfield_above_surface_pressure(
+                        ds, var, plev_value, surf_press_short=surf_pres_short)
 
     pressure_vars = list(set(pressure_vars))
 
     return refined, new_vars_output, pressure_vars
 
 
-def mask_field_above_surface_pressure(ds, var, pressure_dim, surf_press_short="ps"):
+def mask_2dfield_above_surface_pressure(ds, var, pressure_value, surf_press_short="ps"):
+    """mask data with pressure larger than surface pressure"""
+
+    # masking
+    masked = xr.where(ds[surf_press_short] > pressure_value, ds[var],
+                      CMOR_MISSING_VALUE, keep_attrs=True)
+    # copy attributes and transpose dims like the original array
+    masked.attrs = ds[var].attrs.copy()
+    masked = masked.transpose(*ds[var].dims)
+
+    return masked
+
+
+def mask_3dfield_above_surface_pressure(ds, var, pressure_dim, surf_press_short="ps"):
     """mask data with pressure larger than surface pressure"""
 
     # broadcast pressure coordinate and surface pressure to
@@ -160,7 +184,8 @@ def mask_field_above_surface_pressure(ds, var, pressure_dim, surf_press_short="p
     plev_extended, _ = xr.broadcast(pressure_dim, ds[var])
     ps_extended, _ = xr.broadcast(ds[surf_press_short], ds[var])
     # masking do not need looping
-    masked = xr.where(plev_extended > ps_extended, CMOR_MISSING_VALUE, ds[var])
+    masked = xr.where(plev_extended < ps_extended, ds[var],
+                      CMOR_MISSING_VALUE, keep_attrs=True)
     # copy attributes and transpose dims like the original array
     masked.attrs = ds[var].attrs.copy()
     masked = masked.transpose(*ds[var].dims)
@@ -192,6 +217,28 @@ def pressure_coordinate(ds, varname, verbose=False):
             print(f"{pro}: {varname} has no pressure coords")
 
     return pressure_coord
+
+
+def find_pressure_level(da):
+    """ for single level pressure fields, find in attributes the coordinate
+    and translate into a pressure (hPa) """
+
+    # get the coordinate string, e.g. p850
+    if "coordinates" in da.attrs:
+        plev_single_string = da.attrs["coordinates"]
+    elif "coordinates" in da.encoding:
+        plev_single_string = da.encoding["coordinates"]
+    else:
+        plev_single_string = None
+
+    # only keep the numbers, this allows for undertermined # of digits
+    # so it works with 3 or 4 digits, e.g. 850 or 1000 hPa
+    if plev_single_string is not None:
+        plev_single = int(''.join(i for i in plev_single_string if i.isdigit()))
+    else:
+        plev_single = None
+
+    return plev_single
 
 
 def refine_tracers(ds, refined, new_vars_output, verbose=False):
