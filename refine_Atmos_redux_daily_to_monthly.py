@@ -59,23 +59,29 @@ def run():
     if "t_ref_max" in list(ds.variables):
         new_vars_output = True
         refined["t_ref_max"] = max_over_month(ds["t_ref_max"], ds, refined)
+        refined["t_ref_max"].encoding["_FillValue"] = CMOR_MISSING_VALUE
     if "t_ref_min" in list(ds.variables):
         new_vars_output = True
         refined["t_ref_min"] = min_over_month(ds["t_ref_min"], ds, refined)
+        refined["t_ref_min"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     if "u_ref_max" in list(ds.variables):
         new_vars_output = True
         refined["u_ref_max"] = max_over_month(ds["u_ref_max"], ds, refined)
+        refined["u_ref_max"].encoding["_FillValue"] = CMOR_MISSING_VALUE
     if "u_ref_min" in list(ds.variables):
         new_vars_output = True
         refined["u_ref_min"] = min_over_month(ds["u_ref_min"], ds, refined)
+        refined["u_ref_min"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     if "rh_ref_max" in list(ds.variables):
         new_vars_output = True
         refined["rh_ref_max"] = max_over_month(ds["rh_ref_max"], ds, refined)
+        refined["rh_ref_max"].encoding["_FillValue"] = CMOR_MISSING_VALUE
     if "rh_ref_min" in list(ds.variables):
         new_vars_output = True
         refined["rh_ref_min"] = min_over_month(ds["rh_ref_min"], ds, refined)
+        refined["rh_ref_min"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     # --- write dataset to file
     if verbose and new_vars_output:
