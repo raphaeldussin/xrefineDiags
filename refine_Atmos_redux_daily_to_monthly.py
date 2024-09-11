@@ -6,8 +6,10 @@
 # are present.
 
 import argparse
+import cftime
 import os
 import netCDF4 as nc
+import numpy as np
 import xarray as xr
 
 xr.set_options(keep_attrs=True)
@@ -33,6 +35,8 @@ def run():
         print(f"{pro}: Opening input file {args.infile}")
 
     ds = xr.open_dataset(args.infile, use_cftime=True)
+    # make a copy of undecoded time
+    time_cop = xr.open_dataset(args.infile, decode_cf=False)["time"]
 
     # --- create output dataset
     if os.path.exists(args.outfile):
@@ -52,8 +56,9 @@ def run():
 
     # -- create time variables if they don't exist in refined dataset
     if "time" not in list(refined.variables):
-        refined = populate_time_vars(refined, ds)
+        refined = populate_time_vars(refined, ds, time_cop)
         # creating time variables do not qualify as new output
+        new_vars_output = False
 
     # -- compute min/max from daily to monthly
     if "t_ref_max" in list(ds.variables):
@@ -123,15 +128,37 @@ def min_over_month(da, ds, refined):
     return da_min
 
 
-def populate_time_vars(refined, ds):
+def cftime_to_float(time_cf, time_cop):
+    """ convert the cftime representation into float using
+    time_cop as a template for units, epoch,... """
+
+    # get units and calendar
+    units = time_cop.attrs["units"]
+
+    if "calendar_type" in list(time_cop.attrs):
+        cal = time_cop.attrs["calendar_type"].lower()
+    elif "calendar" in list(time_cop.attrs):
+        cal = time_cop.attrs["calendar"].lower()
+    else:
+        raise ValueError("No calendar attributes for time variable")
+
+    time_noncf = cftime.date2num(time_cf, units, cal)
+
+    return time_noncf
+
+def populate_time_vars(refined, ds, time_cop):
 
     realtime = xr.decode_cf(ds)["time"]
 
+    # compute monthly values
     time_monthly = (
         ds["time"].groupby(realtime.dt.month).mean(dim="time").rename({"month": "time"})
     )
+
+    time_noncf = cftime_to_float(time_monthly, time_cop)
+
     refined["time"] = xr.DataArray(
-        data=time_monthly, dims=("time"), attrs=ds["time"].attrs
+        data=time_noncf, dims=("time"), attrs=time_cop.attrs
     )
 
     average_DT = (
@@ -140,8 +167,10 @@ def populate_time_vars(refined, ds):
         .sum(dim="time")
         .rename({"month": "time"})
     )
-    refined["average_DT"] = xr.DataArray(data=average_DT.values, dims=("time"))
+    refined["average_DT"] = xr.DataArray(data=average_DT.values.astype("f8"), dims=("time"))
     refined["average_DT"].attrs = ds["average_DT"].attrs.copy()
+    refined["average_DT"].attrs["units"] = "days"
+    refined["average_DT"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     average_T1 = (
         ds["average_T1"]
@@ -149,8 +178,12 @@ def populate_time_vars(refined, ds):
         .min(dim="time")
         .rename({"month": "time"})
     )
-    refined["average_T1"] = xr.DataArray(data=average_T1.values, dims=("time"))
+
+    average_T1_noncf = cftime_to_float(average_T1, time_cop)
+    refined["average_T1"] = xr.DataArray(data=average_T1_noncf.astype("f8"), dims=("time"))
     refined["average_T1"].attrs = ds["average_T1"].attrs.copy()
+    refined["average_T1"].attrs["units"] = time_cop.attrs["units"]
+    refined["average_T1"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     average_T2 = (
         ds["average_T2"]
@@ -158,17 +191,18 @@ def populate_time_vars(refined, ds):
         .max(dim="time")
         .rename({"month": "time"})
     )
-    refined["average_T2"] = xr.DataArray(data=average_T2.values, dims=("time"))
+
+    average_T2_noncf = cftime_to_float(average_T2, time_cop)
+    refined["average_T2"] = xr.DataArray(data=average_T2_noncf.astype("f8"), dims=("time"))
     refined["average_T2"].attrs = ds["average_T2"].attrs.copy()
+    refined["average_T2"].attrs["units"] = time_cop.attrs["units"]
+    refined["average_T2"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
-    time_bnds = xr.concat([average_T1, average_T2], dim="nv").transpose()
-    refined["time_bnds"] = xr.DataArray(data=time_bnds.values, dims=("time", "nv"))
+    time_bnds_noncf = np.stack([average_T1_noncf.astype("f8"), average_T2_noncf.astype("f8")], axis=-1)
+    refined["time_bnds"] = xr.DataArray(data=time_bnds_noncf, dims=("time", "nv"))
     refined["time_bnds"].attrs = ds["time_bnds"].attrs.copy()
-
-    # needs to be repeated to conserve attributes
-    refined["time"] = xr.DataArray(
-        data=time_monthly, dims=("time"), attrs=ds["time"].attrs
-    )
+    refined["time_bnds"].attrs["units"] = time_cop.attrs["units"]
+    refined["time_bnds"].encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     refined["nv"] = xr.DataArray(
         [1.0, 2.0], dims="nv", attrs={"long_name": "vertex number"}

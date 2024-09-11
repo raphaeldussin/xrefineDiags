@@ -40,6 +40,8 @@ def run():
         print(f"{pro}: Opening input file {args.infile}")
 
     ds = xr.open_dataset(args.infile, use_cftime=True)
+    # make a copy of undecoded time
+    time_cop = xr.open_dataset(args.infile, decode_cf=False)["time"]
 
     # --- create output dataset
     if os.path.exists(args.outfile):
@@ -91,7 +93,7 @@ def run():
         print(f"{pro}: no variables created, not writting refined file")
 
     if new_vars_output:
-        write_dataset(refined, ds, pressure_vars, args)
+        write_dataset(refined, time_cop, ds, pressure_vars, args)
 
     return None
 
@@ -405,7 +407,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     return refined, new_vars_output
 
 
-def write_dataset(ds, template, pressure_vars, args):
+def write_dataset(ds, time_cop, template, pressure_vars, args):
     """prepare the dataset and dump into netcdf file"""
 
     if len(ds.attrs) == 0:
@@ -432,6 +434,9 @@ def write_dataset(ds, template, pressure_vars, args):
         if "bounds" in ds[var].attrs:
             var_with_bounds.append(var)
             bounds_variables.append(ds[var].attrs.pop("bounds"))
+
+    # --- overwrite time with original
+    ds["time"] = time_cop.copy()
 
     encoding = set_netcdf_encoding(ds, pressure_vars)
 
