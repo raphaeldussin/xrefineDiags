@@ -40,6 +40,8 @@ def run():
         print(f"{pro}: Opening input file {args.infile}")
 
     ds = xr.open_dataset(args.infile, use_cftime=True)
+    # make a copy of undecoded time
+    time_cop = xr.open_dataset(args.infile, decode_cf=False)["time"]
 
     # --- create output dataset
     if os.path.exists(args.outfile):
@@ -91,7 +93,7 @@ def run():
         print(f"{pro}: no variables created, not writting refined file")
 
     if new_vars_output:
-        write_dataset(refined, ds, pressure_vars, args)
+        write_dataset(refined, time_cop, ds, pressure_vars, args)
 
     return None
 
@@ -111,6 +113,7 @@ def compute_albedo(ds, swdown="rsds", swup="rsus"):
     albedo.attrs.update(albedo_metadata)
     # add comment on how albedo was computed
     albedo.attrs.update({"comment": f"{swup}/{swdown}"})
+    albedo.encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     return albedo
 
@@ -172,6 +175,7 @@ def mask_2dfield_above_surface_pressure(ds, var, pressure_value, surf_press_shor
     # copy attributes and transpose dims like the original array
     masked.attrs = ds[var].attrs.copy()
     masked = masked.transpose(*ds[var].dims)
+    masked.encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     return masked
 
@@ -189,6 +193,7 @@ def mask_3dfield_above_surface_pressure(ds, var, pressure_dim, surf_press_short=
     # copy attributes and transpose dims like the original array
     masked.attrs = ds[var].attrs.copy()
     masked = masked.transpose(*ds[var].dims)
+    masked.encoding["_FillValue"] = CMOR_MISSING_VALUE
 
     return masked
 
@@ -249,6 +254,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["emipoa", "chepsoa"]).issubset(all_vars):
         new_vars_output = True
         refined["emioa"] = ds["emipoa"] + ds["chepsoa"]
+        refined["emioa"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["emioa"].attrs = ds["emipoa"].attrs.copy()
         refined["emioa"].attrs.update(
             {
@@ -262,6 +268,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["emiapoa", "chepasoa"]).issubset(all_vars):
         new_vars_output = True
         refined["emiaoa"] = ds["emiapoa"] + ds["chepasoa"]
+        refined["emiaoa"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["emiaoa"].attrs = ds["emiapoa"].attrs.copy()
         refined["emiaoa"].attrs.update(
             {
@@ -275,6 +282,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["drypoa", "drysoa"]).issubset(all_vars):
         new_vars_output = True
         refined["dryoa"] = ds["drypoa"] + ds["drysoa"]
+        refined["dryoa"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["dryoa"].attrs = ds["drypoa"].attrs.copy()
         refined["dryoa"].attrs.update(
             {
@@ -288,6 +296,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["wetpoa", "wetsoa"]).issubset(all_vars):
         new_vars_output = True
         refined["wetoa"] = ds["wetpoa"] + ds["wetsoa"]
+        refined["wetoa"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["wetoa"].attrs = ds["wetpoa"].attrs.copy()
         refined["wetoa"].attrs.update(
             {
@@ -301,6 +310,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["pso4_aq_kg_m2_s", "pso4_aq_so2_reevap_ls"]).issubset(all_vars):
         new_vars_output = True
         refined["cheaqpso4"] = ds["pso4_aq_kg_m2_s"] + ds["pso4_aq_so2_reevap_ls"]
+        refined["cheaqpso4"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["cheaqpso4"].attrs = ds["pso4_aq_kg_m2_s"].attrs.copy()
         refined["cheaqpso4"].attrs.update(
             {
@@ -314,6 +324,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["eminox_woL", "eminox_lght"]).issubset(all_vars):
         new_vars_output = True
         refined["eminox"] = ds["eminox_woL"] + ds["eminox_lght"]
+        refined["eminox"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["eminox"].attrs = ds["eminox_woL"].attrs.copy()
         refined["eminox"].attrs.update(
             {
@@ -327,6 +338,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["emiisop_woB", "emiisop_biogenic"]).issubset(all_vars):
         new_vars_output = True
         refined["emiisop"] = ds["emiisop_woB"] + ds["emiisop_biogenic"]
+        refined["emiisop"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["emiisop"].attrs = ds["emiisop_woB"].attrs.copy()
         refined["emiisop"].attrs.update(
             {
@@ -340,6 +352,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     if set(["eminh3_woOCN", "nh3_mol_flux_atm0"]).issubset(all_vars):
         new_vars_output = True
         refined["eminh3"] = ds["eminh3_woOCN"] + 0.017 * ds["nh3_mol_flux_atm0"]
+        refined["eminh3"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["eminh3"].attrs = ds["eminh3_woOCN"].attrs.copy()
         refined["eminh3"].attrs.update(
             {
@@ -357,6 +370,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
             + 0.017 * ds["nh3_mol_flux_atm0"]
             - 0.017 * ds["nh3_mol_flux"]
         )
+        refined["drynh3"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["drynh3"].attrs = ds["drynh3_woOCN"].attrs.copy()
         refined["drynh3"].attrs.update(
             {
@@ -379,6 +393,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
             + ds["dust5_flux"]
         )
         refined["emidust"] = refined["emidust"].clip(vmin=0.0)
+        refined["emidust"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["emidust"].attrs = ds["dust1_flux"].attrs.copy()
         refined["emidust"].attrs.update(
             {
@@ -392,7 +407,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
     return refined, new_vars_output
 
 
-def write_dataset(ds, template, pressure_vars, args):
+def write_dataset(ds, time_cop, template, pressure_vars, args):
     """prepare the dataset and dump into netcdf file"""
 
     if len(ds.attrs) == 0:
@@ -409,6 +424,7 @@ def write_dataset(ds, template, pressure_vars, args):
     for var in extra_time_variables:
         if var in list(template.variables):
             ds[var] = template[var]
+            ds[var].encoding["_FillValue"] = CMOR_MISSING_VALUE
             ds[var].attrs = template[var].attrs.copy()
 
     # --- remove bounds in attributes since it messed the bnds var
@@ -418,6 +434,9 @@ def write_dataset(ds, template, pressure_vars, args):
         if "bounds" in ds[var].attrs:
             var_with_bounds.append(var)
             bounds_variables.append(ds[var].attrs.pop("bounds"))
+
+    # --- overwrite time with original
+    ds["time"] = time_cop.copy()
 
     encoding = set_netcdf_encoding(ds, pressure_vars)
 
