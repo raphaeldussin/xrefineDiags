@@ -135,6 +135,7 @@ def mask_above_surface_pressure(
     # surface pressure needs to be in the dataset
     if surf_pres_short in list(ds.variables):
         vars_to_process = list(ds.variables)
+        refined[surf_pres_short] = ds[surf_pres_short].copy()
         # do not process surface pressure
         vars_to_process.remove(surf_pres_short)
         for var in vars_to_process:
@@ -188,7 +189,7 @@ def mask_3dfield_above_surface_pressure(ds, var, pressure_dim, surf_press_short=
     plev_extended, _ = xr.broadcast(pressure_dim, ds[var])
     ps_extended, _ = xr.broadcast(ds[surf_press_short], ds[var])
     # masking do not need looping
-    masked = xr.where(plev_extended < ps_extended, ds[var],
+    masked = xr.where(plev_extended <= ps_extended, ds[var],
                       CMOR_MISSING_VALUE, keep_attrs=True)
     # copy attributes and transpose dims like the original array
     masked.attrs = ds[var].attrs.copy()
