@@ -393,7 +393,7 @@ def refine_tracers(ds, refined, new_vars_output, verbose=False):
             + ds["dust4_flux"]
             + ds["dust5_flux"]
         )
-        refined["emidust"] = refined["emidust"].clip(vmin=0.0)
+        refined["emidust"] = refined["emidust"].clip(min=0.0)
         refined["emidust"].encoding["_FillValue"] = CMOR_MISSING_VALUE
         refined["emidust"].attrs = ds["dust1_flux"].attrs.copy()
         refined["emidust"].attrs.update(
